@@ -130,3 +130,41 @@ It does not perform:
 - Resource actuation  
 
 ---
+
+
+## 🛠️ Current Hardware Implementation (Build v1.0)
+
+### Node 2 Hub Configuration
+The Control Hub utilizes two **Common Anode RGB LEDs** for status visualization. Unlike standard common cathode LEDs, these require a **HIGH** signal to turn **OFF** and a **LOW** signal to turn **ON**.
+
+| Component | Channel | ESP32 GPIO | Logic Purpose |
+| :--- | :--- | :--- | :--- |
+| **Environmental LED (LED 1)** | Red | **25** | Moisture Drift Alert |
+| | Green | **26** | System Healthy/Stable |
+| | Blue | **27** | Evapotranspiration Risk |
+| **Actuation LED (LED 2)** | Red | **18** | Simulated Cooling (Fan) |
+| | Green | **5** | System Idle/Standby |
+| | Blue | **23** | Simulated Humidifier |
+
+### Technical Wiring Requirements
+- **Current Limiting:** Every color channel (6 total) is equipped with a **220Ω resistor** to protect the ESP32 GPIO pins from overcurrent.
+- **Power Rail:** Common Anode pins are connected to the **3.3V rail** of the ESP32.
+- **Pull-up Resistor:** The DHT22 on Node 1 utilizes a **10kΩ pull-up resistor** on the data line for signal stability.
+
+---
+
+## 📡 Wireless Communication Protocol
+
+The system utilizes **ESP-NOW**, a connectionless Wi-Fi communication protocol developed by Espressif. This allows for:
+- **Low Latency:** Immediate transmission of sensor packets without the overhead of a traditional Wi-Fi handshake.
+- **Unicast Transmission:** Node 1 is hardcoded with the specific MAC address of Node 2 (`D4:E9:F4:B2:59:C0`), ensuring data integrity within the distributed network.
+
+### Data Packet Structure
+```cpp
+typedef struct struct_message {
+    float temp;   // Celsius
+    float hum;    // Percentage
+    int light;    // 0-100% (Mapped from 12-bit ADC)
+    int wind;     // 0-100% (Mapped from Potentiometer)
+} struct_message;
+
