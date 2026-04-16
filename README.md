@@ -167,4 +167,46 @@ typedef struct struct_message {
     int light;    // 0-100% (Mapped from 12-bit ADC)
     int wind;     // 0-100% (Mapped from Potentiometer)
 } struct_message;
+```
 
+---
+
+## Sensor Fusion & Comparison Logic (Build v2.0)
+Unlike basic monitoring, this system identifies instability by cross-referencing **Live Node** data against a **Virtual Testbench Node**. Drift is detected when variables that should correlate between the two environments actually diverge.
+
+| Scenario | Data Divergence (Live vs. Testbench) | Identified Impact | LED 1 Color |
+| :--- | :--- | :--- | :--- |
+| **Zone Variation** | Similar Temp + Different Humidity ($>15\%$) | Localized moisture imbalance | **Red** |
+| **Evapotranspiration**| Similar Light + Different Wind ($>20$) | High dehydration risk | **Blue** |
+| **System Healthy** | Multi-variable correlation/Stability | Microclimate consistency | **Green** |
+
+---
+
+## 🛠️ Updated Hardware Implementation
+
+### Node 2 Hub Configuration (Common Anode)
+*Logic: HIGH signal = OFF, LOW signal = ON.*
+
+| Component | Channel | GPIO | Logic Purpose |
+| :--- | :--- | :--- | :--- |
+| **Environmental LED (LED 1)** | Red | **25** | Moisture Drift Alert (Fusion Logic) |
+| | Green | **26** | System Healthy/Stable |
+| | Blue | **27** | Evapotranspiration Risk (Fusion Logic) |
+| **Actuation LED (LED 2)** | Red | **18** | Simulated Cooling Active ($T > 30^\circ C$) |
+| | Green | **5** | System Idle/Standby |
+| | Blue | **23** | Simulated Humidifier Active ($H < 40\%$) |
+
+---
+
+## Automated Demonstration Workflow
+
+The Control Hub (Node 2) now features an automated **15-second loop** to demonstrate every system state using the software-defined Testbench:
+
+1. **State 0 (0-15s): Healthy Mode** - Testbench values are synced to Live data. 
+   - **Result:** LED 1 turns **Green**.
+2. **State 1 (15-30s): Moisture Drift Demo** - Testbench humidity is offset by $+20\%$ relative to Live. 
+   - **Result:** LED 1 turns **Red**.
+3. **State 2 (30-45s): Dehydration Risk Demo** - Testbench wind speed is offset by $+30$ relative to Live. 
+   - **Result:** LED 1 turns **Blue**.
+
+*Note: LED 2 continues to operate independently, reacting in real-time to the physical environment of Node 1 regardless of the demo state.*
