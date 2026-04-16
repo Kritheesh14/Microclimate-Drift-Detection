@@ -19,115 +19,120 @@ typedef struct struct_message {
 } struct_message;
 
 struct_message incoming;   // Data from the real Node
-struct_message testbench;  // Simulated Node values
+struct_message testbench;  // Simulated Node values for comparison
 
-// Helper to handle Common Anode Inversion
+unsigned long lastSwitchTime = 0;
+int demoState = 0;
+
+// Common ANODE → invert logic (LOW = ON, HIGH = OFF)
 void setColor(int r, int g, int b, int Rpin, int Gpin, int Bpin) {
   digitalWrite(Rpin, r ? LOW : HIGH);
   digitalWrite(Gpin, g ? LOW : HIGH);
   digitalWrite(Bpin, b ? LOW : HIGH);
 }
 
-void OnDataRecv(const esp_now_recv_info *info, const uint8_t *incomingData, int len) {
-  memcpy(&incoming, incomingData, sizeof(incoming));
-
+// Function to update LED states based on Fusion and Actuation logic
+void updateLEDs() {
   // --- SENSOR FUSION & COMPARISON LOGIC (LED 1) ---
-  
-  // 1. Zone Variation (Same Temp + Different Humidity)
-  // Logic: If Temp is within 1 degree but Humidity differs by more than 15%
+  // 2. Zone Variation (Moisture Drift)
   if (abs(incoming.temp - testbench.temp) < 1.0 && abs(incoming.hum - testbench.hum) > 15.0) {
-    setColor(1, 0, 0, E_RED, E_GREEN, E_BLUE); // RED: Moisture Drift Alert
+    setColor(1, 0, 0, E_RED, E_GREEN, E_BLUE); // RED
   } 
-  
-  // 2. Evapotranspiration Shift (Same Light + Different Wind)
-  // Logic: If Light is similar but Wind speed diverges significantly
+/*
+ else if (incoming.temp > 10.0 && incoming.light > 80) {
+    setColor(1, 0,  1, E_RED, E_GREEN, E_BLUE); // PURPLE (Red + Blue)
+    Serial.println("ALERT: High Temp & Light! Temperature regulation taking place.");
+  } */
+  // 3. Evapotranspiration Shift
   else if (abs(incoming.light - testbench.light) < 10 && abs(incoming.wind - testbench.wind) > 20) {
-    setColor(0, 0, 1, E_RED, E_GREEN, E_BLUE); // BLUE: Evapotranspiration Risk
+    setColor(0, 0, 1, E_RED, E_GREEN, E_BLUE); // BLUE
   } 
-  
-  // 3. System Healthy
+  // 4. System Healthy
   else {
-    setColor(0, 1, 0, E_RED, E_GREEN, E_BLUE); // GREEN: Stable
+    setColor(0, 1, 0, E_RED, E_GREEN, E_BLUE); // GREEN
   }
 
   // --- ACTUATION LOGIC (LED 2) ---
-  // (Remains based on actual incoming environmental needs)
   if (incoming.temp > 30.0) {
-    setColor(1, 0, 0, A_RED, A_GREEN, A_BLUE); // RED: Simulated Cooling
+    setColor(1, 0, 0, A_RED, A_GREEN, A_BLUE); // RED: Cooling
   } 
-  else if (incoming.hum < 40.0) { // Using 40 as a threshold for humidifier
-    setColor(0, 0, 1, A_RED, A_GREEN, A_BLUE); // BLUE: Simulated Humidifier
+  else if (incoming.hum < 40.0) { 
+    setColor(0, 0, 1, A_RED, A_GREEN, A_BLUE); // BLUE: Humidifier
   } 
   else {
     setColor(0, 1, 0, A_RED, A_GREEN, A_BLUE); // GREEN: Standby
   }
+}
 
-  Serial.println("--- Comparison Report ---");
-  Serial.printf("LIVE -> T:%.1f H:%.1f L:%d W:%d\n", incoming.temp, incoming.hum, incoming.light, incoming.wind);
-  Serial.printf("TEST -> T:%.1f H:%.1f L:%d W:%d\n", testbench.temp, testbench.hum, testbench.light, testbench.wind);
+// Callback when data is received
+void OnDataRecv(const esp_now_recv_info *info, const uint8_t *incomingData, int len) {
+  memcpy(&incoming, incomingData, sizeof(incoming));
+
+  Serial.printf("RCVD Data -> T:%.1f H:%.1f L:%d W:%d\n", 
+                incoming.temp, incoming.hum, incoming.light, incoming.wind);
+
+  updateLEDs();
 }
 
 void setup() {
   Serial.begin(115200);
 
-  // Initialize Testbench Values (Adjust these to test your logic)
+  // Initialize LEDs
+  int pins[] = {E_RED, E_GREEN, E_BLUE, A_RED, A_GREEN, A_BLUE};
+  for (int i : pins) {
+    pinMode(i, OUTPUT);
+    digitalWrite(i, HIGH); // Start OFF for common anode
+  }
+
+  // Set initial Testbench values
   testbench.temp = 25.0;
   testbench.hum = 50.0;
   testbench.light = 70;
   testbench.wind = 10;
 
-  int pins[] = {E_RED, E_GREEN, E_BLUE, A_RED, A_GREEN, A_BLUE};
-  for (int i : pins) {
-    pinMode(i, OUTPUT);
-    digitalWrite(i, HIGH); 
-  }
-
   WiFi.mode(WIFI_STA);
+
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW Init Failed");
     return;
   }
 
   esp_now_register_recv_cb(OnDataRecv);
-  Serial.println("Control Hub v1.0 (Fusion Logic Enabled)");
+  Serial.println("Control Hub Node 2 Ready");
 }
 
-unsigned long lastSwitchTime = 0;
-int demoState = 0;
-
 void loop() {
-  // Check if 15 seconds have passed
+  // Demo cycle: Change testbench values every 15 seconds
   if (millis() - lastSwitchTime >= 15000) {
     lastSwitchTime = millis();
     demoState++;
-    if (demoState > 2) demoState = 0; // Cycle through 3 Environmental states
+    if (demoState > 2) demoState = 0;
 
     switch (demoState) {
-      case 0: // STATE: SYSTEM HEALTHY
-        Serial.println("\n[DEMO] Switching to: SYSTEM HEALTHY (LED 1 GREEN)");
+      case 0: // SYSTEM HEALTHY
+        Serial.println("\n[DEMO] Mode: SYSTEM HEALTHY");
         testbench.temp = incoming.temp; 
         testbench.hum = incoming.hum;
         testbench.light = incoming.light;
         testbench.wind = incoming.wind;
         break;
 
-      case 1: // STATE: MOISTURE DRIFT
-        Serial.println("\n[DEMO] Switching to: MOISTURE DRIFT (LED 1 RED)");
-        // Force drift: Keep temp same, but make testbench humidity very different
+      case 1: // MOISTURE DRIFT
+        Serial.println("\n[DEMO] Mode: MOISTURE DRIFT");
         testbench.temp = incoming.temp; 
-        testbench.hum = incoming.hum + 20.0; // Offset by 20%
+        testbench.hum = incoming.hum + 20.0; 
         testbench.light = incoming.light;
         testbench.wind = incoming.wind;
         break;
 
-      case 2: // STATE: EVAPOTRANSPIRATION RISK
-        Serial.println("\n[DEMO] Switching to: EVAPOTRANSPIRATION RISK (LED 1 BLUE)");
-        // Force risk: Keep light same, but make testbench wind very different
+      case 2: // EVAPOTRANSPIRATION RISK
+        Serial.println("\n[DEMO] Mode: EVAPOTRANSPIRATION");
         testbench.temp = incoming.temp;
         testbench.hum = incoming.hum;
         testbench.light = incoming.light;
-        testbench.wind = incoming.wind + 30; // Offset wind speed
+        testbench.wind = incoming.wind + 30; 
         break;
     }
+    updateLEDs();
   }
 }
