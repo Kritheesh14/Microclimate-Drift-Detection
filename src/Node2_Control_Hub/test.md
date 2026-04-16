@@ -41,7 +41,41 @@ The node utilizes a non-blocking callback mechanism. Upon receiving a packet:
 
 ---
 
-## 🚀 Deployment Instructions
+## Deployment Instructions
 1. Ensure the **Sender Node (Node 1)** is configured with the MAC address of this ESP32.
 2. Connect RGB LEDs using appropriate current-limiting resistors (220Ω recommended).
 3. Set the Upload Speed to `115200` and the Board to **ESP32 Dev Module**.
+
+---
+
+## 🆕 Build v2.0 Features
+
+### 1. Virtual Testbench Comparison
+Unlike basic threshold monitoring, the system now uses a **Virtual Testbench Node**—a software-defined "ideal" node stored in memory. The system identifies instability by calculating the divergence between the **Live Node** (incoming sensors) and this **Testbench Node**.
+
+### 2. Sensor Fusion Logic (Divergence Detection)
+The "Drift" status (LED 1) is now determined by how variables correlate:
+- **Moisture Drift (Red):** Triggered when the Live and Testbench nodes report the same temperature but diverge in humidity by $>15\%$.
+- **Evapotranspiration Risk (Blue):** Triggered when light levels match but wind speeds diverge by $>20$ units.
+- **System Stable (Green):** Triggered when values align within safety tolerances.
+
+### 3. Automated Demonstration Mode
+The `loop()` function now runs an automated **45-second cycle** (15s per state) to demonstrate the system's analytical capabilities without requiring manual sensor manipulation:
+
+| Phase | Duration | Logic State | Expected LED 1 |
+| :--- | :--- | :--- | :--- |
+| **Phase 1** | 0 - 15s | **Healthy** (Sync Mode) | 🟢 Green |
+| **Phase 2** | 15 - 30s | **Moisture Drift** (+20% Offset) | 🔴 Red |
+| **Phase 3** | 30 - 45s | **Dehydration Risk** (+30 Offset) | 🔵 Blue |
+
+---
+
+## Updated Actuator Matrix (Node 2)
+
+| State | LED 1 (Fusion Logic) | LED 2 (Physical Actuation) | Trigger Condition |
+| :--- | :--- | :--- | :--- |
+| **Stable** | 🟢 Green | 🟢 Green | Values correlate; Temp < 30°C |
+| **Cooling** | - | 🔴 Red | Live Temperature > 30.0°C |
+| **Humidify** | - | 🔵 Blue | Live Humidity < 40.0% |
+| **Drift Alert**| 🔴 Red | - | Same Temp + Diff Humidity |
+| **Risk Alert** | 🔵 Blue | - | Same Light + Diff Wind |
